@@ -69,9 +69,10 @@ class Augmentor:
 
         return None
 
-    def perform_augmentation(self, target_increase=0.3):
+    def perform_augmentation(self, target_count=500):
         print("\n" + "=" * 60)
         print("STARTING DATA AUGMENTATION")
+        print(f"Target: {target_count} images per class")
         print("=" * 60)
 
         self.output_path.mkdir(exist_ok=True)
@@ -103,7 +104,8 @@ class Augmentor:
             ]
 
             original_count = len(image_files)
-            target_aug = int(original_count * target_increase)
+
+            target_aug = max(0, target_count - original_count)
 
             # Copy ORIGINAL IMAGES safely
             for img_file in tqdm(
@@ -119,16 +121,31 @@ class Augmentor:
 
             # AUGMENTATION LOOP
             aug_count = 0
-            aug_per_image = max(1, target_aug // max(original_count, 1))
 
-            for img_file in tqdm(image_files, desc=f"Augmenting {class_name}"):
+            # Calculate augmentations per image (with cycling if needed)
+            if original_count > 0 and target_aug > 0:
+                aug_per_image = target_aug // original_count
+                extra_augs = target_aug % original_count
+            else:
+                aug_per_image = 0
+                extra_augs = 0
+
+            print(f"  Original: {original_count}, Need: {target_aug} augmented images")
+            print(f"  Strategy: {aug_per_image} augs/image + {extra_augs} extra")
+
+            for idx, img_file in enumerate(
+                tqdm(image_files, desc=f"Augmenting {class_name}")
+            ):
                 img = cv2.imread(str(img_file))
 
                 if img is None:
                     print(f"[WARNING] Cannot augment unreadable image: {img_file}")
                     continue
 
-                for i in range(aug_per_image):
+                # Determine how many augmentations for this specific image
+                num_augs = aug_per_image + (1 if idx < extra_augs else 0)
+
+                for i in range(num_augs):
                     aug_type = random.choice(augmentation_types)
                     aug_img = self.augment_image(img, aug_type)
 

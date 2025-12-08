@@ -43,3 +43,5 @@ Thumbs.db
 
 data/
 
+processed_features.pkl
+scaler.pkl
