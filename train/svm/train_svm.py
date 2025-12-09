@@ -24,8 +24,10 @@ from pathlib import Path
 class SVMTrainer:
     """Support Vector Machine Classifier Trainer"""
 
-    def __init__(self, features_path="processed_features.pkl"):
+    def __init__(self, features_path="processed_features.pkl", save_dir="./train/svm"):
         self.features_path = features_path
+        self.save_dir = Path(save_dir)
+        self.save_dir.mkdir(parents=True, exist_ok=True)
         self.model = None
         self.best_params = None
         self.classes = None
@@ -217,9 +219,10 @@ class SVMTrainer:
 
         return accuracy, y_pred
 
-    def save_model(self, filename="svm_model.pkl"):
+    def save_model(self, filename="./train/svm/svm_model.pkl"):
         """Save trained model"""
         print("\nSaving model...")
+        filename = self.save_dir / "svm_model.pkl"
 
         model_data = {
             "model": self.model,
@@ -233,7 +236,7 @@ class SVMTrainer:
         print(f"Model saved: {filename}")
 
         # Save results JSON
-        json_file = filename.replace(".pkl", "_results.json")
+        json_file = json_file = self.save_dir / "svm_model_results.json"
         with open(json_file, "w") as f:
             json.dump(self.results, f, indent=2)
         print(f"Results saved: {json_file}")
@@ -260,7 +263,11 @@ class SVMTrainer:
         plt.ylabel("True Label", fontsize=12)
         plt.xlabel("Predicted Label", fontsize=12)
         plt.tight_layout()
-        plt.savefig("svm_confusion_matrix.png", dpi=300, bbox_inches="tight")
+        plt.savefig(
+            self.save_dir / "svm_confusion_matrix.png",
+            dpi=300,
+            bbox_inches="tight",
+        )
         print(f"Plot saved: svm_confusion_matrix.png")
         plt.close()
 

@@ -41,7 +41,11 @@ htmlcov/
 Thumbs.db
 
 
-data/
+data/dataset/*
+data/augmented_dataset/*
 
-processed_features.pkl
-scaler.pkl
+features/*
+
+train/*/*.pkl
+train/*/*.json
+train/*/*.png

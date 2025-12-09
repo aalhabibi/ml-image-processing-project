@@ -1,5 +1,5 @@
-from train.train_knn import KNNTrainer
-from train.train_svm import SVMTrainer
+from train.knn.train_knn import KNNTrainer
+from train.svm.train_svm import SVMTrainer
 from .data_loader import DatasetInfo
 from .augmentation import Augmentor
 from .feature_extraction import FeatureExtractor
@@ -15,9 +15,9 @@ class WastePipeline:
         info = DatasetInfo(self.dataset_path)
         classes, counts = info.load_dataset_info()
 
-        # # 2. Augmentation
+        # 2. Augmentation
         augmentor = Augmentor(self.dataset_path, self.output_path, classes)
-        augmentor.perform_augmentation(target_count=500)
+        augmentor.perform_augmentation(target_count=1000)
 
         # 3. Feature extraction with PCA
         extractor = FeatureExtractor(
@@ -30,7 +30,7 @@ class WastePipeline:
         print("TRAINING k-NN CLASSIFIER")
         print("=" * 70)
 
-        knn_trainer = KNNTrainer(features_path="processed_features.pkl")
+        knn_trainer = KNNTrainer(features_path="features/processed_features.pkl")
         X_train, X_test, y_train, y_test = knn_trainer.load_data()
         best_model = knn_trainer.hyperparameter_tuning(X_train, y_train)
         knn_trainer.model = best_model
@@ -43,7 +43,7 @@ class WastePipeline:
         print("TRAINING SVM CLASSIFIER")
         print("=" * 70)
 
-        svm_trainer = SVMTrainer(features_path="processed_features.pkl")
+        svm_trainer = SVMTrainer(features_path="features/processed_features.pkl")
         X_train, X_test, y_train, y_test = svm_trainer.load_data()
         best_svm = svm_trainer.hyperparameter_tuning(X_train, y_train)
         svm_trainer.model = best_svm
@@ -51,7 +51,7 @@ class WastePipeline:
         print(f"  SVM Test Accuracy: {svm_accuracy:.4f} ({svm_accuracy*100:.2f}%)")
         svm_trainer.save_model("svm_model.pkl")
 
-        # Final comparison
+        # # Final comparison
         print("\n" + "=" * 70)
         print("FINAL RESULTS")
         print("=" * 70)
@@ -60,10 +60,5 @@ class WastePipeline:
         best = "SVM" if svm_accuracy > knn_accuracy else "k-NN"
         best_acc = max(svm_accuracy, knn_accuracy)
         print(f"\nBest Model: {best} with {best_acc:.4f} ({best_acc*100:.2f}%)")
-
-        if best_acc >= 0.85:
-            print("\nTARGET ACHIEVED: >= 85%")
-        else:
-            print(f"\nGap to target: {(0.85 - best_acc)*100:.2f}%")
 
         print("\nPipeline complete!")

@@ -30,7 +30,13 @@ class FeatureExtractor:
     """
 
     def __init__(
-        self, dataset_path, classes, n_jobs=-1, use_pca=True, pca_variance=0.95
+        self,
+        dataset_path,
+        classes,
+        n_jobs=-1,
+        use_pca=True,
+        pca_variance=0.95,
+        save_dir="./features",
     ):
         self.dataset_path = Path(dataset_path)
         self.classes = classes
@@ -38,6 +44,8 @@ class FeatureExtractor:
         self.pca = PCA(n_components=pca_variance) if use_pca else None
         self.use_pca = use_pca
         self.n_jobs = n_jobs
+        self.save_dir = Path(save_dir)
+        self.save_dir.mkdir(parents=True, exist_ok=True)
 
         # Print feature breakdown
         print("\n" + "=" * 70)
@@ -414,7 +422,7 @@ class FeatureExtractor:
 
         # Save
         print("\nSaving processed features...")
-        with open("processed_features.pkl", "wb") as f:
+        with open(self.save_dir / "processed_features.pkl", "wb") as f:
             pickle.dump(
                 {
                     "X": X_scaled,
@@ -426,11 +434,11 @@ class FeatureExtractor:
                 },
                 f,
             )
-        with open("scaler.pkl", "wb") as f:
+        with open(self.save_dir / "scaler.pkl", "wb") as f:
             pickle.dump(self.scaler, f)
 
         if self.use_pca:
-            with open("pca.pkl", "wb") as f:
+            with open(self.save_dir / "pca.pkl", "wb") as f:
                 pickle.dump(self.pca, f)
             print("PCA model saved: pca.pkl")
 
