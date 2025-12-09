@@ -424,16 +424,3 @@ class FeatureExtractor:
         print("\n🎯 Ready for classifier training!")
 
         return X_scaled, y
-
-
-# ============================================================================
-# USAGE
-# ============================================================================
-if __name__ == "__main__":
-    classes = ["glass", "paper", "cardboard", "plastic", "metal", "trash"]
-
-    extractor = OptimizedFeatureExtractor(
-        dataset_path="augmented_dataset", classes=classes, n_jobs=-1
-    )
-
-    X, y = extractor.extract_features_from_dataset()
