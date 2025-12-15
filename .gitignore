@@ -42,7 +42,9 @@ Thumbs.db
 
 
 data/dataset/*
-data/augmented_dataset/*
+data/augmented_train/*
+data/train_split/*
+data/test_split/*
 
 features/*
 

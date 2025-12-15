@@ -424,3 +424,117 @@ class FeatureExtractor:
         print("\n🎯 Ready for classifier training!")
 
         return X_scaled, y
+
+    def extract_features_split(self, train_path, test_path):
+        """
+        Extract features from SPLIT train/test datasets separately.
+
+        This is the CORRECT approach:
+        1. Train features are extracted from augmented training data
+        2. Test features are extracted from pristine test data
+        3. Scaler is fit ONLY on train data, then applied to test data
+
+        This prevents data leakage and gives true performance metrics.
+        """
+        print("\n" + "=" * 70)
+        print("EXTRACTING FEATURES FROM SPLIT DATASETS")
+        print("=" * 70)
+
+        # Extract TRAINING features
+        print("\n[1/2] Processing TRAINING set (augmented)...")
+        X_train, y_train = self._extract_from_path(train_path)
+
+        # Fit scaler on training data ONLY
+        print("\nFitting scaler on training data...")
+        X_train_scaled = self.scaler.fit_transform(X_train)
+
+        # Extract TEST features
+        print("\n[2/2] Processing TEST set (pristine)...")
+        X_test, y_test = self._extract_from_path(test_path)
+
+        # Transform test data using training scaler
+        print("\nApplying training scaler to test data...")
+        X_test_scaled = self.scaler.transform(X_test)
+
+        # Save everything
+        print("\nSaving features and scaler...")
+
+        with open(self.save_dir / "train_features.pkl", "wb") as f:
+            pickle.dump(
+                {
+                    "X": X_train_scaled,
+                    "y": y_train,
+                    "classes": self.classes,
+                    "feature_dim": X_train_scaled.shape[1],
+                },
+                f,
+            )
+
+        with open(self.save_dir / "test_features.pkl", "wb") as f:
+            pickle.dump(
+                {
+                    "X": X_test_scaled,
+                    "y": y_test,
+                    "classes": self.classes,
+                    "feature_dim": X_test_scaled.shape[1],
+                },
+                f,
+            )
+
+        with open(self.save_dir / "scaler.pkl", "wb") as f:
+            pickle.dump(self.scaler, f)
+
+        print("\n" + "=" * 70)
+        print("FEATURE EXTRACTION COMPLETE (SPLIT MODE)")
+        print("=" * 70)
+        print(f"Training samples: {len(X_train_scaled)} (from augmented data)")
+        print(f"Test samples:     {len(X_test_scaled)} (pristine, no augmentation)")
+        print(f"Feature dimension: {X_train_scaled.shape[1]}")
+        print(f"\n✓ Train features: {self.save_dir / 'train_features.pkl'}")
+        print(f"✓ Test features:  {self.save_dir / 'test_features.pkl'}")
+        print(f"✓ Scaler saved:   {self.save_dir / 'scaler.pkl'}")
+        print("\n🎯 Ready for classifier training!")
+        print("   NOTE: No train/test split needed in trainers - already split!")
+
+        return X_train_scaled, X_test_scaled, y_train, y_test
+
+    def _extract_from_path(self, dataset_path):
+        """Helper to extract features from a specific path"""
+        dataset_path = Path(dataset_path)
+        X, y = [], []
+
+        for class_idx, class_name in enumerate(self.classes):
+            class_path = dataset_path / class_name
+
+            if not class_path.exists():
+                print(f"Warning: {class_path} not found, skipping...")
+                continue
+
+            image_files = (
+                list(class_path.glob("*.jpg"))
+                + list(class_path.glob("*.png"))
+                + list(class_path.glob("*.jpeg"))
+            )
+
+            def process_image(img_path):
+                try:
+                    img = cv2.imread(str(img_path))
+                    if img is None:
+                        return None
+                    return self.extract_features(img)
+                except Exception as e:
+                    print(f"Error: {img_path}: {e}")
+                    return None
+
+            results = Parallel(n_jobs=self.n_jobs)(
+                delayed(process_image)(img)
+                for img in tqdm(image_files, desc=f"  {class_name:15s}")
+            )
+
+            class_features = [r for r in results if r is not None]
+            class_labels = [class_idx] * len(class_features)
+
+            X.extend(class_features)
+            y.extend(class_labels)
+
+        return np.array(X), np.array(y)
