@@ -109,8 +109,8 @@ class SVMTrainer:
         print("-" * 70)
 
         param_grid = {
-            "C": [1, 10, 50, 100],
-            "gamma": ["scale", "auto", 0.001],
+            "C": [10, 100],
+            "gamma": ["scale", "auto"],
             "kernel": ["rbf"],
         }
 
