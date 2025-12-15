@@ -13,17 +13,15 @@ warnings.filterwarnings("ignore")
 
 class FeatureExtractor:
     """
-    OPTIMIZED Feature Extraction for Waste Classification
+    BASELINE Feature Extraction for Waste Classification
 
-    Key Improvements:
-    1. Better HOG parameters (more discriminative)
-    2. Added color moments (fast, effective)
-    3. Multi-scale Haralick (captures more texture info)
-    4. Improved Gabor filters
-    5. Added frequency domain features
-    6. Removed PCA by default (can hurt accuracy)
+    Lean feature set optimized for:
+    1. Fast extraction
+    2. Good generalization
+    3. Minimal redundancy
+    4. Essential discriminative power
 
-    Total: ~520 features (optimized for waste classification)
+    Total: 193 features (baseline - essential only)
     """
 
     def __init__(
@@ -41,21 +39,18 @@ class FeatureExtractor:
         self.save_dir.mkdir(parents=True, exist_ok=True)
 
         print("\n" + "=" * 70)
-        print("OPTIMIZED FEATURE EXTRACTOR FOR WASTE CLASSIFICATION")
+        print("BASELINE FEATURE EXTRACTOR FOR WASTE CLASSIFICATION")
         print("=" * 70)
-        print("\nFeature Composition:")
-        print("  1. Color Histogram (HSV)    : 96 features")
-        print("  2. Color Moments (HSV)      : 9 features  [NEW]")
-        print("  3. Texture (LBP)             : 32 features")
-        print("  4. Edge Features             : 17 features")
-        print("  5. Statistical Features      : 12 features")
-        print("  6. HOG Descriptors (BETTER)  : 324 features [IMPROVED]")
-        print("  7. Shape Features (Hu)       : 7 features")
-        print("  8. Haralick Texture (Multi)  : 30 features [IMPROVED]")
-        print("  9. Gabor Filters (Enhanced)  : 8 features  [IMPROVED]")
-        print(" 10. Frequency Features (FFT)  : 5 features  [NEW]")
+        print("\nFeature Composition (Baseline - Essential Only):")
+        print("  1. HSV Histogram            : 96 features")
+        print("  2. Color Moments (HSV)      : 9 features")
+        print("  3. LBP Texture              : 32 features")
+        print("  4. HOG Descriptors          : 36 features")
+        print("  5. Haralick Texture         : 20 features")
         print("  " + "-" * 50)
-        print("  TOTAL                        : ~540 features")
+        print("  TOTAL                       : 193 features")
+        print("\n  ✓ Removed: Hu moments, FFT, Gabor, edges, stats")
+        print("  ✓ Lean baseline for faster training & better generalization")
         print("=" * 70 + "\n")
 
     # ========================================================================
@@ -137,31 +132,27 @@ class FeatureExtractor:
         return np.array(features)
 
     # ========================================================================
-    # FEATURE GROUP 6: IMPROVED HOG FEATURES (~324 features) - CRITICAL FIX!
+    # FEATURE GROUP 4: HOG FEATURES (36 features) - BASELINE
     # ========================================================================
     def extract_hog_features(self, image):
         """
-        IMPROVED HOG with better parameters for waste classification
+        Compact HOG features for baseline
 
-        Key Changes:
-        - Larger image size (256x256 instead of 128x128)
-        - Smaller cells (8x8 instead of 16x16) = MORE features
-        - This captures finer shape details crucial for classification
+        Settings optimized for speed and essential shape info:
+        - 64x64 image (fast processing)
+        - 32x32 cells (coarse but captures main structure)
+        - 2x2 blocks → 1 block total
+        - 9 orientations × 4 cells = 36 features
 
-        Why this matters:
-        - Bottles vs cans need fine-grained shape info
-        - Original 128x128 + 16x16 cells = only ~144 features
-        - New 256x256 + 8x8 cells = ~324 features
-        - 2.25x more discriminative power!
+        Captures essential shape without over-complicating
         """
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-
-        gray = cv2.resize(gray, (128, 128))
+        gray = cv2.resize(gray, (64, 64))
 
         fd = hog(
             gray,
             orientations=9,
-            pixels_per_cell=(16, 16),
+            pixels_per_cell=(32, 32),
             cells_per_block=(2, 2),
             block_norm="L2-Hys",
             visualize=False,
@@ -183,22 +174,21 @@ class FeatureExtractor:
         return hu_moments.flatten()
 
     # ========================================================================
-    # FEATURE GROUP 8: MULTI-SCALE HARALICK (30 features) - IMPROVED!
+    # FEATURE GROUP 5: HARALICK TEXTURE (20 features) - BASELINE
     # ========================================================================
     def extract_haralick_features(self, image):
         """
-        IMPROVED: Multi-scale Haralick features
+        Baseline Haralick texture features
 
-        Enhancement:
-        - Added distance=2 (captures larger texture patterns)
-        - Original only used distance=1 (adjacent pixels)
-        - Now captures both fine and coarse textures
+        Uses distance=1 only for compact representation:
+        - 4 angles × 5 properties = 20 features
+        - Captures essential texture without redundancy
         """
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         gray = (gray / 32).astype(np.uint8)
 
-        # IMPROVED: Use TWO distances for multi-scale texture
-        distances = [1, 2]  # Adjacent + nearby pixels
+        # Single distance for baseline
+        distances = [1]
         angles = [0, np.pi / 4, np.pi / 2, 3 * np.pi / 4]
 
         glcm = graycomatrix(
@@ -221,10 +211,9 @@ class FeatureExtractor:
 
         for prop in properties:
             values = graycoprops(glcm, prop)
-            # Now we get features from 2 distances × 4 angles = 8 values per property
             features.extend(values.flatten())
 
-        return np.array(features[:30])  # Trim to 30 for consistency
+        return np.array(features)  # 20 features
 
     # ========================================================================
     # FEATURE GROUP 9: ENHANCED GABOR FILTERS (8 features) - IMPROVED!
@@ -303,41 +292,38 @@ class FeatureExtractor:
         )
 
     # ========================================================================
-    # MASTER FEATURE EXTRACTION
+    # MASTER FEATURE EXTRACTION - BASELINE
     # ========================================================================
     def extract_features(self, image):
         """
-        Extract complete optimized feature vector
+        Extract baseline feature vector (essential features only)
 
-        Returns: ~540-dimensional feature vector
+        Returns: 193-dimensional feature vector
+        - HSV Histogram: 96
+        - Color Moments: 9
+        - LBP Texture: 32
+        - HOG: 36
+        - Haralick: 20
+
+        Removed for baseline: Hu moments, FFT, Gabor, edges, stats
         """
         img = cv2.resize(image, (256, 256))
 
-        # Extract all features
+        # Extract ONLY baseline features
         color_hist = self.extract_color_histogram(img)  # 96
-        color_moments = self.extract_color_moments(img)  # 9  [NEW]
+        color_moments = self.extract_color_moments(img)  # 9
         texture = self.extract_texture_features(img)  # 32
-        edges = self.extract_edge_features(img)  # 17
-        stats = self.extract_statistical_features(img)  # 12
-        hog_feat = self.extract_hog_features(img)  # ~324 [IMPROVED]
-        shape = self.extract_shape_features(img)  # 7
-        haralick = self.extract_haralick_features(img)  # 30 [IMPROVED]
-        gabor = self.extract_gabor_features(img)  # 8  [IMPROVED]
-        frequency = self.extract_frequency_features(img)  # 5  [NEW]
+        hog_feat = self.extract_hog_features(img)  # 36
+        haralick = self.extract_haralick_features(img)  # 20
 
-        # Concatenate
+        # Concatenate baseline features only
         feature_vector = np.concatenate(
             [
                 color_hist,
                 color_moments,
                 texture,
-                edges,
-                stats,
                 hog_feat,
-                shape,
                 haralick,
-                gabor,
-                frequency,
             ]
         )
 

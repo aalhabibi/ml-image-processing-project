@@ -69,7 +69,7 @@ class Augmentor:
 
         return None
 
-    def perform_augmentation(self, target_count=500):
+    def perform_augmentation(self, target_count=600):
         print("\n" + "=" * 60)
         print("STARTING DATA AUGMENTATION")
         print(f"Target: {target_count} images per class")
@@ -84,7 +84,6 @@ class Augmentor:
             "brightness_inc",
             "brightness_dec",
             "zoom_in",
-            "noise",
         ]
 
         stats = {}

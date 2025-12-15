@@ -109,8 +109,8 @@ class SVMTrainer:
         print("-" * 70)
 
         param_grid = {
-            "C": [10, 100],
-            "gamma": ["scale", "auto"],
+            "C": [0.1, 1, 10, 100, 1000],
+            "gamma": [1e-3, 1e-2, 1e-1, "scale"],
             "kernel": ["rbf"],
         }
 
@@ -131,10 +131,10 @@ class SVMTrainer:
         grid_search = GridSearchCV(
             estimator=svm,
             param_grid=param_grid,
-            cv=5,
+            cv=3,
             scoring="accuracy",
             verbose=2,
-            n_jobs=4,
+            n_jobs=-1,
         )
 
         start_time = time.time()
@@ -176,11 +176,22 @@ class SVMTrainer:
         if use_best_params and self.best_params:
             print("\nUsing optimized parameters")
             self.model = SVC(
-                **self.best_params, probability=True, random_state=42, max_iter=10000
+                **self.best_params,
+                probability=True,
+                random_state=42,
+                max_iter=5000,
+                cache_size=1000,
+                class_weight="balanced",
             )
         else:
             print("\nUsing default: C=1.0, kernel=rbf, gamma=scale")
-            self.model = SVC(probability=True, random_state=42, max_iter=10000)
+            self.model = SVC(
+                probability=True,
+                random_state=42,
+                max_iter=5000,
+                cache_size=1000,
+                class_weight="balanced",
+            )
 
         start_time = time.time()
         self.model.fit(X_train, y_train)

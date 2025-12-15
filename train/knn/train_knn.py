@@ -162,10 +162,10 @@ class KNNTrainer:
         grid_search = GridSearchCV(
             estimator=knn,
             param_grid=param_grid,
-            cv=5,
+            cv=3,
             scoring="accuracy",
             verbose=2,
-            n_jobs=4,
+            n_jobs=-1,
         )
 
         start_time = time.time()
