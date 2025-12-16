@@ -23,7 +23,7 @@ from pipeline.feature_extraction import FeatureExtractor
 class RealtimeWasteClassifier:
     def __init__(
         self,
-        model_path="best_model/svm_model.pkl",
+        model_path="best_model/best_model.pkl",
         scaler_path="features/scaler.pkl",
         *,
         overlay_alpha=0.65,
@@ -420,8 +420,8 @@ def main():
     parser.add_argument(
         "--model",
         type=str,
-        default="best_model/svm_model.pkl",
-        help="Path to trained model (default: best_model/svm_model.pkl)",
+        default="best_model/best_model.pkl",
+        help="Path to trained model (default: best_model/best_model.pkl)",
     )
     parser.add_argument(
         "--scaler",
