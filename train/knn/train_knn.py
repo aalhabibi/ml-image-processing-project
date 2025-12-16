@@ -144,9 +144,9 @@ class KNNTrainer:
         print("-" * 70)
 
         param_grid = {
-            "n_neighbors": [3, 5, 7, 9, 11],
-            "weights": ["distance"],
-            "metric": ["manhattan"],
+            "n_neighbors": [3, 5, 7, 11, 15, 21],
+            "weights": ["uniform", "distance"],
+            "metric": ["euclidean", "manhattan"],
         }
 
         print("\nParameter grid:")
