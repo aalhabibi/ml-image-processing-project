@@ -13,10 +13,7 @@ class Augmentor:
         self.classes = classes
 
     def augment_image(self, image, aug_type):
-        """
-        Applies augmentation safely.
-        Returns None if augmentation fails or image becomes invalid.
-        """
+        """Apply a single augmentation safely."""
         if image is None or image.size == 0:
             return None
 
@@ -95,7 +92,6 @@ class Augmentor:
             class_output = self.output_path / class_name
             class_output.mkdir(exist_ok=True)
 
-            # Collect only real image files
             image_files = [
                 f
                 for f in class_input.iterdir()
@@ -106,7 +102,6 @@ class Augmentor:
 
             target_aug = max(0, target_count - original_count)
 
-            # Copy ORIGINAL IMAGES safely
             for img_file in tqdm(
                 image_files, desc=f"Copying {class_name}", unit=" images"
             ):
@@ -118,10 +113,8 @@ class Augmentor:
 
                 cv2.imwrite(str(class_output / img_file.name), img)
 
-            # AUGMENTATION LOOP
             aug_count = 0
 
-            # Calculate augmentations per image (with cycling if needed)
             if original_count > 0 and target_aug > 0:
                 aug_per_image = target_aug // original_count
                 extra_augs = target_aug % original_count
@@ -141,7 +134,6 @@ class Augmentor:
                     print(f"[WARNING] Cannot augment unreadable image: {img_file}")
                     continue
 
-                # Determine how many augmentations for this specific image
                 num_augs = aug_per_image + (1 if idx < extra_augs else 0)
 
                 for i in range(num_augs):

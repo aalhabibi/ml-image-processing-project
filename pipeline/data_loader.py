@@ -10,7 +10,7 @@ class DatasetInfo:
         self.classes = []
 
     def load_dataset_info(self):
-        """Load class names and count images per class"""
+        """Load class names and image counts."""
         self.classes = [d.name for d in self.dataset_path.iterdir() if d.is_dir()]
         print(f"Found {len(self.classes)} classes: {self.classes}")
 
@@ -31,20 +31,9 @@ class DatasetInfo:
         return self.classes, image_counts
 
     def split_dataset(self, train_path, test_path, test_size=0.2, random_state=42):
-        """
-        Split original dataset into train/test BEFORE augmentation.
-
-        This prevents data leakage by ensuring augmented versions of test images
-        don't appear in the training set.
-
-        Args:
-            train_path: Path to save training split
-            test_path: Path to save test split
-            test_size: Fraction of data for testing (default: 0.2)
-            random_state: Random seed for reproducibility
-        """
+        """Split the original dataset before augmentation."""
         print("\n" + "=" * 70)
-        print("SPLITTING DATASET (BEFORE AUGMENTATION)") 
+        print("SPLITTING DATASET (BEFORE AUGMENTATION)")
         print("=" * 70)
         print(f"Train path: {train_path}")
         print(f"Test path:  {test_path}")
@@ -115,7 +104,7 @@ class DatasetInfo:
         print(f"Total original: {total_original}")
         print(f"Total train:    {total_train} ({total_train/total_original*100:.1f}%)")
         print(f"Total test:     {total_test} ({total_test/total_original*100:.1f}%)")
-        print("\n⚠️  IMPORTANT: Only the TRAIN set will be augmented!")
+        print("\n   Only the TRAIN set will be augmented.")
         print("   The TEST set remains pristine to prevent data leakage.")
 
         return split_stats

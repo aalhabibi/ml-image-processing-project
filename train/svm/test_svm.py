@@ -1,8 +1,4 @@
-#!/usr/bin/env python3
-"""
-quick_test.py - Quick test of trained model
-Usage: python quick_test.py --image path/to/image.jpg
-"""
+"""Quick test helper for the trained SVM model."""
 
 import pickle
 import cv2
@@ -10,7 +6,6 @@ import numpy as np
 import sys
 from pathlib import Path
 
-# Add project root to path
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
@@ -18,10 +13,9 @@ from pipeline.feature_extraction import FeatureExtractor
 
 
 def load_model_and_scaler():
-    """Load trained model and scaler"""
+    """Load trained model and scaler."""
     print("Loading model...")
 
-    # Load model
     with open("./train/svm/svm_model.pkl", "rb") as f:
         model_data = pickle.load(f)
 
@@ -30,7 +24,6 @@ def load_model_and_scaler():
     conf_threshold = model_data.get("confidence_threshold", 0.4)
     margin_threshold = model_data.get("decision_margin_threshold", 0.5)
 
-    # Load scaler
     with open("./features/scaler.pkl", "rb") as f:
         scaler = pickle.load(f)
 
@@ -40,41 +33,30 @@ def load_model_and_scaler():
 
 
 def extract_features_from_image(image_path):
-    """
-    Extract features from a single image
-    IMPORTANT: Must match the feature extractor used during training!
-    """
-    # Import your feature extractor
-
-    # Initialize (dummy path, we only need the methods)
+    """Extract features from a single image."""
     extractor = FeatureExtractor(
         dataset_path="dummy",
         classes=["glass", "paper", "cardboard", "plastic", "metal", "trash"],
         n_jobs=1,
     )
 
-    # Load image
     image = cv2.imread(str(image_path))
     if image is None:
         raise ValueError(f"Could not load image: {image_path}")
 
-    # Extract features
     features = extractor.extract_features(image)
 
     return features, image
 
 
 def predict(model, scaler, features, classes, conf_threshold, margin_threshold):
-    """Make prediction with rejection mechanism"""
-    # Scale features
+    """Make prediction with rejection handling."""
     features_scaled = scaler.transform(features.reshape(1, -1))
 
-    # Get predictions
     probas = model.predict_proba(features_scaled)
     max_proba = probas.max()
     prediction = model.predict(features_scaled)[0]
 
-    # Get decision margin
     decision_values = model.decision_function(features_scaled)
     if decision_values.ndim == 1:
         margin = abs(decision_values[0])
@@ -82,13 +64,12 @@ def predict(model, scaler, features, classes, conf_threshold, margin_threshold):
         sorted_scores = np.sort(decision_values[0])
         margin = sorted_scores[-1] - sorted_scores[-2]
 
-    # Check rejection criteria
     low_confidence = max_proba < conf_threshold
     close_to_boundary = margin < margin_threshold
     rejected = low_confidence or close_to_boundary
 
     if rejected:
-        prediction = len(classes) - 1  # Unknown
+        prediction = len(classes) - 1
     prob_dict = {}
     for i, cls in enumerate(classes):
         if i < probas.shape[1]:
@@ -112,19 +93,15 @@ def test_single_image(image_path):
     print("QUICK MODEL TEST")
     print("=" * 70)
 
-    # Load model
     model, scaler, classes, conf_thresh, margin_thresh = load_model_and_scaler()
 
-    # Extract features
     print(f"\nProcessing image: {image_path}")
     features, image = extract_features_from_image(image_path)
     print(f"✓ Extracted {len(features)} features")
 
-    # Predict
     print("\nMaking prediction...")
     result = predict(model, scaler, features, classes, conf_thresh, margin_thresh)
 
-    # Display results
     print("\n" + "=" * 70)
     print("PREDICTION RESULTS")
     print("=" * 70)
@@ -166,10 +143,8 @@ def test_multiple_images(image_folder):
     print("TESTING MULTIPLE IMAGES")
     print("=" * 70)
 
-    # Load model
     model, scaler, classes, conf_thresh, margin_thresh = load_model_and_scaler()
 
-    # Get images
     folder = Path(image_folder)
     images = (
         list(folder.glob("*.jpg"))
@@ -197,7 +172,6 @@ def test_multiple_images(image_folder):
         except Exception as e:
             print(f"❌ {img_path.name}: Error - {e}")
 
-    # Summary
     print("\n" + "=" * 70)
     print("SUMMARY")
     print("=" * 70)
@@ -209,7 +183,6 @@ def test_multiple_images(image_folder):
     print(f"Accepted: {accepted} ({accepted/len(results)*100:.1f}%)")
     print(f"Rejected: {rejected} ({rejected/len(results)*100:.1f}%)")
 
-    # Class distribution
     from collections import Counter
 
     pred_counts = Counter([r["class_label"] for r in results])
@@ -225,11 +198,10 @@ def test_on_dataset(dataset_path):
     print("TESTING ON DATASET")
     print("=" * 70)
 
-    # Load model
     model, scaler, classes, conf_thresh, margin_thresh = load_model_and_scaler()
 
     dataset = Path(dataset_path)
-    known_classes = classes[:-1]  # Exclude 'unknown'
+    known_classes = classes[:-1]
 
     all_correct = 0
     all_total = 0
@@ -275,7 +247,6 @@ def test_on_dataset(dataset_path):
         print(f"  Accuracy: {correct}/{len(images)} ({accuracy:.2f}%)")
         print(f"  Rejected: {rejected}/{len(images)} ({rejection_rate:.1f}%)")
 
-    # Overall results
     print("\n" + "=" * 70)
     print("OVERALL RESULTS")
     print("=" * 70)
@@ -287,7 +258,6 @@ def test_on_dataset(dataset_path):
     print(f"Correct predictions: {all_correct} ({overall_accuracy:.2f}%)")
     print(f"Rejected as unknown: {all_rejected} ({overall_rejection:.1f}%)")
 
-    # Check target
     target = 85.0
     if overall_accuracy >= target:
         print(f"\n✅ TARGET ACHIEVED! {overall_accuracy:.2f}% >= {target}%")
@@ -316,7 +286,6 @@ if __name__ == "__main__":
         elif args.dataset:
             test_on_dataset(args.dataset)
         else:
-            # Default: test on original dataset
             print("No arguments provided. Testing on 'dataset' folder...")
             test_on_dataset("dataset")
 

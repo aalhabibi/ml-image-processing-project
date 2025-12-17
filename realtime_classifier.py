@@ -1,9 +1,4 @@
-#!/usr/bin/env python3
-"""
-Real-Time Waste Classification System
-Uses webcam to classify waste materials in real-time
-Press 'q' to quit, 's' to save screenshot
-"""
+"""Real-time waste classification from webcam."""
 
 import pickle
 import cv2
@@ -13,7 +8,6 @@ from pathlib import Path
 from collections import deque
 import time
 
-# Add project root to path
 project_root = Path(__file__).parent
 sys.path.insert(0, str(project_root))
 
@@ -32,41 +26,35 @@ class RealtimeWasteClassifier:
         self.model_path = model_path
         self.scaler_path = scaler_path
 
-        # Load model and scaler
         self.load_model()
 
-        # Initialize feature extractor
         self.extractor = FeatureExtractor(
             dataset_path="dummy",
             classes=self.classes,
             n_jobs=1,
         )
 
-        # Prediction smoothing (moving average)
-        self.prediction_buffer = deque(maxlen=5)  # Last 5 predictions
+        self.prediction_buffer = deque(maxlen=5)
         self.confidence_buffer = deque(maxlen=5)
         self.show_overlay = True
         self.overlay_alpha = overlay_alpha
 
-        # Performance tracking
         self.fps_buffer = deque(maxlen=30)
         self.last_time = time.time()
 
-        # Color mapping for each class
         self.class_colors = {
-            "cardboard": (139, 69, 19),  # Brown
-            "glass": (0, 255, 255),  # Cyan
-            "metal": (192, 192, 192),  # Silver
-            "paper": (255, 255, 255),  # White
-            "plastic": (0, 165, 255),  # Orange
-            "trash": (128, 128, 128),  # Gray
+            "cardboard": (139, 69, 19),
+            "glass": (0, 255, 255),
+            "metal": (192, 192, 192),
+            "paper": (255, 255, 255),
+            "plastic": (0, 165, 255),
+            "trash": (128, 128, 128),
         }
 
     def load_model(self):
         """Load trained model and scaler"""
         print("Loading model...")
 
-        # Load model
         with open(self.model_path, "rb") as f:
             model_data = pickle.load(f)
 
@@ -74,7 +62,6 @@ class RealtimeWasteClassifier:
         self.classes = model_data["classes"]
         self.conf_threshold = model_data.get("confidence_threshold", 0.4)
 
-        # Try to load decision margin threshold for SVM
         if hasattr(self.model, "decision_function"):
             self.margin_threshold = model_data.get("decision_margin_threshold", 0.5)
             self.use_svm = True
@@ -85,7 +72,6 @@ class RealtimeWasteClassifier:
             self.distance_stats = model_data.get("distance_stats", None)
             self.use_svm = False
 
-        # Load scaler
         with open(self.scaler_path, "rb") as f:
             self.scaler = pickle.load(f)
 
@@ -105,21 +91,17 @@ class RealtimeWasteClassifier:
 
     def predict(self, features):
         """Make prediction with confidence scoring"""
-        # Scale features
         features_scaled = self.scaler.transform(features.reshape(1, -1))
 
-        # Get predictions
         probas = self.model.predict_proba(features_scaled)
         max_proba = probas.max()
         prediction = self.model.predict(features_scaled)[0]
 
-        # Get all class probabilities
         prob_dict = {}
         for i, cls in enumerate(self.classes):
             if i < probas.shape[1]:
                 prob_dict[cls] = float(probas[0][i])
 
-        # Check confidence for SVM
         if self.use_svm:
             decision_values = self.model.decision_function(features_scaled)
             if decision_values.ndim == 1:
@@ -130,7 +112,6 @@ class RealtimeWasteClassifier:
 
             rejected = max_proba < self.conf_threshold or margin < self.margin_threshold
         else:
-            # k-NN distance-based rejection
             distances, _ = self.model.kneighbors(features_scaled)
             avg_distance = distances.mean()
 
@@ -158,7 +139,6 @@ class RealtimeWasteClassifier:
         self.prediction_buffer.append(result["class_label"])
         self.confidence_buffer.append(result["confidence"])
 
-        # Most common prediction in buffer
         from collections import Counter
 
         most_common = Counter(self.prediction_buffer).most_common(1)[0][0]
@@ -178,10 +158,8 @@ class RealtimeWasteClassifier:
         """Draw UI overlay on frame"""
         h, w = frame.shape[:2]
 
-        # Create semi-transparent overlay
         overlay = frame.copy()
 
-        # Top bar - Title
         cv2.rectangle(overlay, (0, 0), (w, 60), (50, 50, 50), -1)
         cv2.putText(
             overlay,
@@ -193,7 +171,6 @@ class RealtimeWasteClassifier:
             2,
         )
 
-        # FPS counter
         cv2.putText(
             overlay,
             f"FPS: {fps:.1f}",
@@ -204,16 +181,14 @@ class RealtimeWasteClassifier:
             2,
         )
 
-        # Bottom panel - Results (compact to keep more camera area visible)
         panel_height = 170
         cv2.rectangle(overlay, (0, h - panel_height), (w, h), (50, 50, 50), -1)
 
-        # Main prediction (smoothed)
         class_color = self.class_colors.get(smoothed_class, (255, 255, 255))
 
         if result["rejected"]:
             display_text = "UNKNOWN / LOW CONFIDENCE"
-            class_color = (0, 0, 255)  # Red
+            class_color = (0, 0, 255)
         else:
             display_text = smoothed_class.upper()
 
@@ -236,7 +211,6 @@ class RealtimeWasteClassifier:
             3,
         )
 
-        # Confidence
         cv2.putText(
             overlay,
             f"Confidence: {smoothed_conf*100:.1f}%",
@@ -247,7 +221,6 @@ class RealtimeWasteClassifier:
             2,
         )
 
-        # Top 3 probabilities
         sorted_probs = sorted(
             result["probabilities"].items(), key=lambda x: x[1], reverse=True
         )[:3]
@@ -256,7 +229,6 @@ class RealtimeWasteClassifier:
             color = self.class_colors.get(cls, (255, 255, 255))
             bar_width = int(300 * prob)
 
-            # Draw probability bar
             cv2.rectangle(
                 overlay, (20, y_offset), (20 + bar_width, y_offset + 20), color, -1
             )
@@ -264,7 +236,6 @@ class RealtimeWasteClassifier:
                 overlay, (20, y_offset), (320, y_offset + 20), (100, 100, 100), 2
             )
 
-            # Label
             cv2.putText(
                 overlay,
                 f"{cls}: {prob*100:.1f}%",
@@ -276,7 +247,6 @@ class RealtimeWasteClassifier:
             )
             y_offset += 30
 
-        # Instructions
         cv2.putText(
             overlay,
             "Press 'q' to quit | 's' save | SPACE pause | 'h' toggle UI",
@@ -287,7 +257,6 @@ class RealtimeWasteClassifier:
             1,
         )
 
-        # Blend overlay with original frame
         cv2.addWeighted(
             overlay, self.overlay_alpha, frame, 1 - self.overlay_alpha, 0, frame
         )
@@ -303,14 +272,12 @@ class RealtimeWasteClassifier:
             skip_frames: Process every Nth frame (improves performance)
             fullscreen: Show window fullscreen (True/False)
         """
-        # Open camera
         cap = cv2.VideoCapture(camera_index)
 
         if not cap.isOpened():
             print(f"Error: Could not open camera {camera_index}")
             return
 
-        # Set camera properties for better performance
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
         cap.set(cv2.CAP_PROP_FPS, 30)
@@ -337,7 +304,6 @@ class RealtimeWasteClassifier:
                 window_name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN
             )
         else:
-            # Allow manual resize; start maximized-ish by enlarging window
             cv2.resizeWindow(window_name, 1280, 800)
 
         try:
@@ -348,12 +314,9 @@ class RealtimeWasteClassifier:
                         print("Error: Failed to capture frame")
                         break
 
-                    # Mirror the frame for more intuitive interaction
                     frame = cv2.flip(frame, 1)
 
-                    # Process every Nth frame to improve performance
                     if frame_count % skip_frames == 0:
-                        # Extract features and predict
                         features = self.extract_features(frame)
 
                         if features is not None:
@@ -363,10 +326,8 @@ class RealtimeWasteClassifier:
                             )
                             last_result = result
 
-                    # Calculate FPS
                     fps = self.calculate_fps()
 
-                    # Draw UI
                     if last_result is not None and self.show_overlay:
                         frame = self.draw_ui(
                             frame, last_result, smoothed_class, smoothed_conf, fps
@@ -374,10 +335,8 @@ class RealtimeWasteClassifier:
 
                     frame_count += 1
 
-                # Display frame
                 cv2.imshow(window_name, frame)
 
-                # Handle keyboard input
                 key = cv2.waitKey(1) & 0xFF
 
                 if key == ord("q"):
@@ -401,7 +360,6 @@ class RealtimeWasteClassifier:
             print("\n\nInterrupted by user")
 
         finally:
-            # Cleanup
             cap.release()
             cv2.destroyAllWindows()
             print("\nCamera released. Goodbye!")
@@ -447,7 +405,6 @@ def main():
 
     args = parser.parse_args()
 
-    # Check if model exists
     if not Path(args.model).exists():
         print(f"Error: Model not found at {args.model}")
         print("\nAvailable models:")
@@ -455,7 +412,6 @@ def main():
             print(f"  - {pkl}")
         return
 
-    # Initialize and run classifier
     classifier = RealtimeWasteClassifier(
         model_path=args.model,
         scaler_path=args.scaler,
