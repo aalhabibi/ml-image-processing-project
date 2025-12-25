@@ -45,6 +45,8 @@ data/dataset/*
 data/augmented_train/*
 data/train_split/*
 data/test_split/*
+data/external_test_data/*
+data/sample/*
 
 features/*
 

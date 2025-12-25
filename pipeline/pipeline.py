@@ -45,7 +45,7 @@ class WastePipeline:
             self.augmented_train_path,
             classes,
         )
-        aug_stats = augmentor.perform_augmentation(target_count=1000)
+        aug_stats = augmentor.perform_augmentation(target_count=500)
 
         print("\n" + "=" * 70)
         print("STEP 4: Extract Features")

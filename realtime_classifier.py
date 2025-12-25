@@ -21,6 +21,9 @@ class RealtimeWasteClassifier:
         scaler_path="features/scaler.pkl",
         *,
         overlay_alpha=0.65,
+        use_preprocessing=True,
+        auto_gamma=True,
+        use_clahe=True,
     ):
         """Initialize the real-time classifier"""
         self.model_path = model_path
@@ -38,6 +41,9 @@ class RealtimeWasteClassifier:
         self.confidence_buffer = deque(maxlen=5)
         self.show_overlay = True
         self.overlay_alpha = overlay_alpha
+        self.use_preprocessing = use_preprocessing
+        self.auto_gamma = auto_gamma
+        self.use_clahe = use_clahe
 
         self.fps_buffer = deque(maxlen=30)
         self.last_time = time.time()
@@ -83,11 +89,42 @@ class RealtimeWasteClassifier:
     def extract_features(self, image):
         """Extract features from image"""
         try:
-            features = self.extractor.extract_features(image)
+            proc = image
+            if self.use_preprocessing:
+                proc = self._preprocess_for_cnn(image)
+            features = self.extractor.extract_features(proc)
             return features
         except Exception as e:
             print(f"Error extracting features: {e}")
             return None
+
+    def _preprocess_for_cnn(self, image):
+        """Stabilize lighting via optional CLAHE and auto gamma correction."""
+        img = image.copy()
+
+        # CLAHE on L-channel in LAB for local contrast
+        if self.use_clahe:
+            lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
+            l, a, b = cv2.split(lab)
+            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+            l = clahe.apply(l)
+            lab = cv2.merge((l, a, b))
+            img = cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
+
+        # Automatic gamma to normalize overall brightness
+        if self.auto_gamma:
+            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+            mean = np.mean(gray) / 255.0
+            target = 0.5
+            gamma = np.clip(np.log(target + 1e-6) / np.log(mean + 1e-6), 0.7, 1.5)
+            if abs(gamma - 1.0) > 0.05:
+                inv_gamma = 1.0 / gamma
+                table = np.array(
+                    [((i / 255.0) ** inv_gamma) * 255 for i in np.arange(256)]
+                ).astype("uint8")
+                img = cv2.LUT(img, table)
+
+        return img
 
     def predict(self, features):
         """Make prediction with confidence scoring"""
@@ -402,6 +439,11 @@ def main():
         default=0.65,
         help="Overlay transparency (0-1, lower shows more camera)",
     )
+    parser.add_argument(
+        "--no-preprocess",
+        action="store_true",
+        help="Disable image pre-processing (CLAHE + auto gamma)",
+    )
 
     args = parser.parse_args()
 
@@ -416,6 +458,7 @@ def main():
         model_path=args.model,
         scaler_path=args.scaler,
         overlay_alpha=args.overlay_alpha,
+        use_preprocessing=not args.no_preprocess,
     )
     classifier.run(
         camera_index=args.camera,

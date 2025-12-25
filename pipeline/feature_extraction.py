@@ -4,222 +4,98 @@ from pathlib import Path
 from tqdm import tqdm
 import pickle
 from sklearn.preprocessing import StandardScaler
-from skimage.feature import local_binary_pattern, hog, graycomatrix, graycoprops
-from joblib import Parallel, delayed
-import warnings
 
-warnings.filterwarnings("ignore")
+# Optional imports for CNN-based feature extraction
+try:
+    import torch
+    from PIL import Image
+    from torchvision import models
+    from torchvision.models import ResNet50_Weights
+
+    _TORCH_AVAILABLE = True
+except Exception:
+    _TORCH_AVAILABLE = False
 
 
 class FeatureExtractor:
-    """Feature extraction utilities for the waste classifier."""
+    """CNN feature extractor for the waste classifier."""
 
     def __init__(
         self,
         dataset_path,
         classes,
-        n_jobs=-1,
+        n_jobs=1,
         save_dir="./features",
+        feature_type="cnn",
+        cnn_model_name="resnet50",
     ):
         self.dataset_path = Path(dataset_path)
         self.classes = classes
         self.scaler = StandardScaler()
-        self.n_jobs = n_jobs
+        self.n_jobs = 1 if n_jobs == -1 else n_jobs
         self.save_dir = Path(save_dir)
         self.save_dir.mkdir(parents=True, exist_ok=True)
+        self.feature_type = feature_type.lower()
+        self.cnn_model_name = cnn_model_name.lower()
 
-        print("Initialized feature extractor (193-feature baseline).\n")
+        if self.feature_type != "cnn":
+            raise ValueError("Only feature_type='cnn' is supported now.")
 
-    def extract_color_histogram(self, image, bins=32):
-        """Compute HSV histogram."""
-        hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
-        h = cv2.calcHist([hsv], [0], None, [bins], [0, 180])
-        s = cv2.calcHist([hsv], [1], None, [bins], [0, 256])
-        v = cv2.calcHist([hsv], [2], None, [bins], [0, 256])
-        h = cv2.normalize(h, None).flatten()
-        s = cv2.normalize(s, None).flatten()
-        v = cv2.normalize(v, None).flatten()
-        return np.concatenate([h, s, v])
+        if not _TORCH_AVAILABLE:
+            raise ImportError(
+                "CNN feature extraction requires torch, torchvision, and Pillow. "
+                "Please install them and retry."
+            )
 
-    def extract_color_moments(self, image):
-        """Extract color moments for each HSV channel."""
-        hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV).astype(np.float32)
-
-        moments = []
-        for channel in cv2.split(hsv):
-            mean = np.mean(channel)
-            std = np.std(channel)
-            skew = np.mean(((channel - mean) / (std + 1e-6)) ** 3)
-            moments.extend([mean, std, skew])
-
-        return np.array(moments)
-
-    def extract_texture_features(self, image, P=8, R=1, bins=32):
-        """LBP texture histogram."""
-        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        lbp = local_binary_pattern(gray, P, R, method="uniform")
-        hist, _ = np.histogram(lbp.ravel(), bins=bins, range=(0, bins))
-        hist = hist.astype(np.float32)
-        hist = hist / (hist.sum() + 1e-6)
-        return hist
-
-    def extract_edge_features(self, image, bins=16):
-        """Edge density and orientation histogram."""
-        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        edges = cv2.Canny(gray, 50, 150)
-        edge_density = np.sum(edges > 0) / edges.size
-        sobelx = cv2.Sobel(gray, cv2.CV_64F, 1, 0)
-        sobely = cv2.Sobel(gray, cv2.CV_64F, 0, 1)
-        orientation = np.arctan2(sobely, sobelx)
-        hist, _ = np.histogram(orientation, bins=bins, range=(-np.pi, np.pi))
-        hist = hist.astype(np.float32)
-        hist = hist / (hist.sum() + 1e-6)
-        return np.concatenate([[edge_density], hist])
-
-    def extract_statistical_features(self, image):
-        """Basic per-channel statistics."""
-        features = []
-        for ch in cv2.split(image):
-            features += [np.mean(ch), np.std(ch), np.min(ch), np.max(ch)]
-        return np.array(features)
-
-    def extract_hog_features(self, image):
-        """Compact HOG descriptor."""
-        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        gray = cv2.resize(gray, (64, 64))
-
-        fd = hog(
-            gray,
-            orientations=9,
-            pixels_per_cell=(32, 32),
-            cells_per_block=(2, 2),
-            block_norm="L2-Hys",
-            visualize=False,
-            feature_vector=True,
+        # CNN models are not process-parallel friendly; force single worker
+        self.n_jobs = 1
+        self._init_cnn()
+        print(
+            f"Initialized feature extractor (CNN: {self.cnn_model_name.upper()}, 2048-d).\n"
         )
 
-        return fd
+    def _init_cnn(self):
+        """Initialize a pre-trained CNN for feature extraction."""
+        # Device selection
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    def extract_shape_features(self, image):
-        """Hu moments for shape invariance."""
-        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-        moments = cv2.moments(binary)
-        hu_moments = cv2.HuMoments(moments)
-        hu_moments = -np.sign(hu_moments) * np.log10(np.abs(hu_moments) + 1e-10)
-        return hu_moments.flatten()
+        if self.cnn_model_name == "resnet50":
+            weights = ResNet50_Weights.DEFAULT
+            model = models.resnet50(weights=weights)
+            # Replace final FC with identity to get penultimate features (2048-d)
+            model.fc = torch.nn.Identity()
+            self.cnn_feature_dim = 2048
+            self.cnn_transform = weights.transforms()
+        else:
+            raise ValueError(
+                f"Unsupported cnn_model_name: {self.cnn_model_name}. Supported: 'resnet50'"
+            )
 
-    def extract_haralick_features(self, image):
-        """Haralick texture features with distance 1."""
-        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        gray = (gray / 32).astype(np.uint8)
-
-        distances = [1]
-        angles = [0, np.pi / 4, np.pi / 2, 3 * np.pi / 4]
-
-        glcm = graycomatrix(
-            gray,
-            distances=distances,
-            angles=angles,
-            levels=8,
-            symmetric=True,
-            normed=True,
-        )
-
-        features = []
-        properties = [
-            "contrast",
-            "dissimilarity",
-            "homogeneity",
-            "energy",
-            "correlation",
-        ]
-
-        for prop in properties:
-            values = graycoprops(glcm, prop)
-            features.extend(values.flatten())
-
-        return np.array(features)
-
-    def extract_gabor_features(self, image):
-        """Gabor filter responses."""
-        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        features = []
-
-        orientations = [0, np.pi / 4, np.pi / 2, 3 * np.pi / 4]
-        frequencies = [0.1, 0.2]
-
-        for theta in orientations:
-            for freq in frequencies:
-                kernel = cv2.getGaborKernel(
-                    ksize=(21, 21),
-                    sigma=5,
-                    theta=theta,
-                    lambd=10 / freq,
-                    gamma=0.5,
-                    psi=0,
-                )
-                filtered = cv2.filter2D(gray, cv2.CV_32F, kernel)
-                features.append(np.mean(filtered))
-
-        return np.array(features)
-
-    def extract_frequency_features(self, image):
-        """FFT-based frequency features."""
-        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        gray = cv2.resize(gray, (128, 128))
-
-        f = np.fft.fft2(gray)
-        fshift = np.fft.fftshift(f)
-        magnitude_spectrum = np.abs(fshift)
-
-        h, w = magnitude_spectrum.shape
-        center_h, center_w = h // 2, w // 2
-
-        low_freq = magnitude_spectrum[
-            center_h - 10 : center_h + 10, center_w - 10 : center_w + 10
-        ].mean()
-
-        mid_freq = magnitude_spectrum[
-            center_h - 30 : center_h + 30, center_w - 30 : center_w + 30
-        ].mean()
-
-        high_freq = magnitude_spectrum.mean()
-
-        freq_std = np.std(magnitude_spectrum)
-        freq_energy = np.sum(magnitude_spectrum**2)
-
-        return np.array(
-            [low_freq, mid_freq, high_freq, freq_std, np.log(freq_energy + 1)]
-        )
+        model.eval()
+        model.to(self.device)
+        self.cnn_model = model
 
     def extract_features(self, image):
-        """Extract the 193-dimensional baseline feature vector."""
-        img = cv2.resize(image, (256, 256))
+        """Extract feature vector using the CNN."""
+        return self.extract_cnn_features(image)
 
-        color_hist = self.extract_color_histogram(img)
-        color_moments = self.extract_color_moments(img)
-        texture = self.extract_texture_features(img)
-        hog_feat = self.extract_hog_features(img)
-        haralick = self.extract_haralick_features(img)
+    def extract_cnn_features(self, image):
+        """Extract deep features from a pre-trained CNN (ResNet50)."""
+        # Convert BGR (OpenCV) to RGB and to PIL Image
+        img_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        pil_img = Image.fromarray(img_rgb)
 
-        feature_vector = np.concatenate(
-            [
-                color_hist,
-                color_moments,
-                texture,
-                hog_feat,
-                haralick,
-            ]
-        )
+        # Preprocess per model's recommended transforms
+        input_tensor = self.cnn_transform(pil_img).unsqueeze(0).to(self.device)
 
-        return feature_vector
+        with torch.no_grad():
+            feats = self.cnn_model(input_tensor)
+        # Move to CPU and flatten
+        return feats.detach().cpu().numpy().reshape(-1)
 
     def extract_features_from_dataset(self):
         """Extract features from the entire dataset."""
         print("\nExtracting features from dataset...")
-        print(f"Using {self.n_jobs} parallel workers\n")
-
         X, y = [], []
 
         for class_idx, class_name in enumerate(self.classes):
@@ -230,26 +106,16 @@ class FeatureExtractor:
                 + list(class_path.glob("*.jpeg"))
             )
 
-            def process_image(img_path):
+            for img_path in tqdm(image_files, desc=f"Processing {class_name:15s}"):
                 try:
                     img = cv2.imread(str(img_path))
                     if img is None:
-                        return None
-                    return self.extract_features(img)
+                        continue
+                    feat = self.extract_features(img)
+                    X.append(feat)
+                    y.append(class_idx)
                 except Exception as e:
                     print(f"Error: {img_path}: {e}")
-                    return None
-
-            results = Parallel(n_jobs=self.n_jobs)(
-                delayed(process_image)(img)
-                for img in tqdm(image_files, desc=f"Processing {class_name:15s}")
-            )
-
-            class_features = [r for r in results if r is not None]
-            class_labels = [class_idx] * len(class_features)
-
-            X.extend(class_features)
-            y.extend(class_labels)
 
         X = np.array(X)
         y = np.array(y)
@@ -362,25 +228,15 @@ class FeatureExtractor:
                 + list(class_path.glob("*.jpeg"))
             )
 
-            def process_image(img_path):
+            for img_path in tqdm(image_files, desc=f"  {class_name:15s}"):
                 try:
                     img = cv2.imread(str(img_path))
                     if img is None:
-                        return None
-                    return self.extract_features(img)
+                        continue
+                    feat = self.extract_features(img)
+                    X.append(feat)
+                    y.append(class_idx)
                 except Exception as e:
                     print(f"Error: {img_path}: {e}")
-                    return None
-
-            results = Parallel(n_jobs=self.n_jobs)(
-                delayed(process_image)(img)
-                for img in tqdm(image_files, desc=f"  {class_name:15s}")
-            )
-
-            class_features = [r for r in results if r is not None]
-            class_labels = [class_idx] * len(class_features)
-
-            X.extend(class_features)
-            y.extend(class_labels)
 
         return np.array(X), np.array(y)
