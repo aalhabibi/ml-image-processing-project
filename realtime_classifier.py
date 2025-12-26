@@ -24,10 +24,12 @@ class RealtimeWasteClassifier:
         use_preprocessing=True,
         auto_gamma=True,
         use_clahe=True,
+        roi_size=400,
     ):
         """Initialize the real-time classifier"""
         self.model_path = model_path
         self.scaler_path = scaler_path
+        self.roi_size = roi_size  # size of classification region
 
         self.load_model()
 
@@ -86,12 +88,31 @@ class RealtimeWasteClassifier:
         print(f"  Classes: {self.classes}")
         print(f"  Confidence threshold: {self.conf_threshold}")
 
-    def extract_features(self, image):
-        """Extract features from image"""
+    def extract_roi(self, frame):
+        """Extract center square region of interest"""
+        h, w = frame.shape[:2]
+        
+        # Calculate center square coordinates
+        size = min(self.roi_size, h, w)
+        center_x, center_y = w // 2, h // 2
+        x1 = center_x - size // 2
+        y1 = center_y - size // 2
+        x2 = x1 + size
+        y2 = y1 + size
+        
+        # Extract ROI
+        roi = frame[y1:y2, x1:x2]
+        return roi, (x1, y1, x2, y2)
+
+    def extract_features(self, frame):
+        """Extract features from center ROI only"""
         try:
-            proc = image
+            roi, _ = self.extract_roi(frame)
+            
+            proc = roi
             if self.use_preprocessing:
-                proc = self._preprocess_for_cnn(image)
+                proc = self._preprocess_for_cnn(roi)
+            
             features = self.extractor.extract_features(proc)
             return features
         except Exception as e:
@@ -196,6 +217,22 @@ class RealtimeWasteClassifier:
         h, w = frame.shape[:2]
 
         overlay = frame.copy()
+
+        _, (x1, y1, x2, y2) = self.extract_roi(frame)
+        
+        roi_overlay = overlay.copy()
+        cv2.rectangle(roi_overlay, (x1, y1), (x2, y2), (0, 255, 0), 3)
+        cv2.addWeighted(roi_overlay, 0.8, overlay, 0.2, 0, overlay)
+        
+        corner_len = 30
+        cv2.line(overlay, (x1, y1), (x1 + corner_len, y1), (0, 255, 0), 4)
+        cv2.line(overlay, (x1, y1), (x1, y1 + corner_len), (0, 255, 0), 4)
+        cv2.line(overlay, (x2, y1), (x2 - corner_len, y1), (0, 255, 0), 4)
+        cv2.line(overlay, (x2, y1), (x2, y1 + corner_len), (0, 255, 0), 4)
+        cv2.line(overlay, (x1, y2), (x1 + corner_len, y2), (0, 255, 0), 4)
+        cv2.line(overlay, (x1, y2), (x1, y2 - corner_len), (0, 255, 0), 4)
+        cv2.line(overlay, (x2, y2), (x2 - corner_len, y2), (0, 255, 0), 4)
+        cv2.line(overlay, (x2, y2), (x2, y2 - corner_len), (0, 255, 0), 4)
 
         cv2.rectangle(overlay, (0, 0), (w, 60), (50, 50, 50), -1)
         cv2.putText(
@@ -413,6 +450,12 @@ def main():
         "--camera", type=int, default=0, help="Camera device index (default: 0)"
     )
     parser.add_argument(
+        "--roi-size",
+        type=int,
+        default=400,
+        help="Size of square classification region (default: 400)",
+    )
+    parser.add_argument(
         "--model",
         type=str,
         default="best_model/best_model.pkl",
@@ -459,6 +502,7 @@ def main():
         scaler_path=args.scaler,
         overlay_alpha=args.overlay_alpha,
         use_preprocessing=not args.no_preprocess,
+        roi_size=args.roi_size,
     )
     classifier.run(
         camera_index=args.camera,
